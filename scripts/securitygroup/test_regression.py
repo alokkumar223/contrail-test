@@ -34,7 +34,9 @@ class SecurityGroupRegressionTests1(BaseSGTest, VerifySecGroup, ConfigPolicy):
     @test.attr(type=['sanity'])
     @preposttest_wrapper
     def test_sec_group_add_delete(self):
-        """Verify security group add delete
+        """
+	Description: Verify security group add delete
+	Steps:
             1. Create custom security group with rule in it
             2. Delete custom security group
         Pass criteria: Step 1 and 2 should pass
@@ -53,7 +55,9 @@ class SecurityGroupRegressionTests1(BaseSGTest, VerifySecGroup, ConfigPolicy):
     @test.attr(type=['sanity'])
     @preposttest_wrapper
     def test_vm_with_sec_group(self):
-        """Verify attach dettach security group in VM
+        """
+	Description: Verify attach dettach security group in VM
+	Steps:
             1. Create VN with subnet
             2. Create security group with custom rules
             3. Launch VM in custom created security group and verify
@@ -147,7 +151,14 @@ class SecurityGroupRegressionTests2(BaseSGTest, VerifySecGroup, ConfigPolicy):
 
     @preposttest_wrapper
     def test_sec_group_with_proto(self):
-        """Verify security group with allow specific protocol on all ports and policy with allow all between VN's"""
+        """
+	Description: Verify security group with allow specific protocol on all ports and policy with allow all between VN's
+	Steps:
+	    1. create the resources VN,VM,policy,SG 
+	    2. update the SG rules with proto tcp(for sg1) and udp(sg2)
+	    3. verify if traffic allowed is as per the proto allowed in SG rule
+	Pass criteria: step 3 should pass 
+	"""
         self.logger.info("Configure the policy with allow any")
         rules = [
             {
@@ -202,7 +213,15 @@ class SecurityGroupRegressionTests2(BaseSGTest, VerifySecGroup, ConfigPolicy):
 
     @preposttest_wrapper
     def test_sec_group_with_port(self):
-        """Verify security group with allow specific protocol/port and policy with allow all between VN's"""
+        """
+	Description: Verify security group with allow specific protocol/port and policy with allow all between VN's
+        Steps:
+            1. create the resources VN,VM,policy,SG
+            2. update the SG rules with proto tcp(for sg1) and udp(sg2) and open port 8000-9000
+            3. verify if traffic allowed is as per the proto/port allowed in SG rule
+        Pass criteria: step 3 should pass
+	"""
+
         self.logger.info("Configure the policy with allow any")
         rules = [
             {
@@ -278,7 +297,15 @@ class SecurityGroupRegressionTests3(BaseSGTest, VerifySecGroup, ConfigPolicy):
 
     @preposttest_wrapper
     def test_sec_group_with_proto_and_policy_to_allow_only_tcp(self):
-        """Verify security group with allow specific protocol on all ports and policy with allow only TCP between VN's"""
+        """
+	Description: Verify security group with allow specific protocol on all ports and policy with allow only TCP between VN's
+        Steps:
+            1. create the resources VN,VM,policy,SG
+            2. update the SG rules with proto tcp(for sg1) and udp(sg2) 
+            3. verify if traffic allowed is as per the proto allowed in SG rule and policy
+        Pass criteria: step 3 should pass
+        """
+
         self.logger.info("Configure the policy with allow TCP only rule.")
         rules = [
             {
@@ -334,7 +361,15 @@ class SecurityGroupRegressionTests3(BaseSGTest, VerifySecGroup, ConfigPolicy):
 
     @preposttest_wrapper
     def test_sec_group_with_proto_and_policy_to_allow_only_tcp_ports(self):
-        """Verify security group with allow specific protocol on all ports and policy with allow only TCP on specifif ports between VN's"""
+        """
+	Description: Verify security group with allow specific protocol on all ports and policy with allow only TCP on specifif ports between VN's
+        Steps:
+            1. create the resources VN,VM,policy,SG
+            2. update the SG rules with proto tcp(for sg1) and udp(sg2)
+            3. verify if traffic allowed is as per the proto allowed in SG rule and port in policy
+        Pass criteria: step 3 should pass
+        """
+
         self.logger.info(
             "Configure the policy with allow TCP port 8000/9000 only rule.")
         rules = [
@@ -403,7 +438,14 @@ class SecurityGroupRegressionTests4(BaseSGTest, VerifySecGroup, ConfigPolicy):
 
     @preposttest_wrapper
     def test_vn_compute_sg_comb(self):
-	""" Verify traffic between intra/inter VN,intra/inter compute and same/diff default/user-define SG"""
+	"""
+	Description: Verify traffic between intra/inter VN,intra/inter compute and same/diff default/user-define SG
+	Steps:
+	    1. define the topology for intra/inter VN,intra/inter compute and same/diff default/user-define SG
+	    2. create the resources as defined in the topo
+	    3. verify the traffic 
+	Pass criteria: step 3 should pass
+	"""
         topology_class_name = None
 
         #
@@ -463,7 +505,15 @@ class SecurityGroupRegressionTests5(BaseSGTest, VerifySecGroup, ConfigPolicy):
 
     @preposttest_wrapper
     def test_sec_group_with_proto_double_rules_sg1(self):
-        """Verify security group with allow tcp/udp protocol on all ports and policy with allow all between VN's"""
+        """
+	Description: Verify security group with allow tcp/udp protocol on all ports and policy with allow all between VN's
+        Steps:
+            1. create the resources VN,VM,policy,SG
+            2. update the SG rules with proto tcp/udp
+            3. verify if traffic allowed is as per the proto allowed in SG rule
+        Pass criteria: step 3 should pass
+        """
+
         self.logger.info("Configure the policy with allow any")
         rules = [
             {
@@ -534,9 +584,13 @@ class SecurityGroupRegressionTests5(BaseSGTest, VerifySecGroup, ConfigPolicy):
 
     @preposttest_wrapper
     def test_default_sg(self):
-        """test default security group
-        1. try to delete default sg, should fail
-        2. add/delete rules and verify the rules with traffic"""
+        """
+	Description: test default security group
+	Steps:
+            1. try to delete default sg, should fail
+            2. add/delete rules and verify the rules with traffic
+	Pass criteria: step 1 and 2 should pass
+	"""
 
         self.logger.info("Configure the policy with allow any")
         rules = [
@@ -637,10 +691,17 @@ class SecurityGroupRegressionTests6(BaseSGTest, VerifySecGroup, ConfigPolicy):
 
     @preposttest_wrapper
     def test_sg_stateful(self):
-	""" Test if SG is stateful:
-	1. test if inbound traffic without allowed ingress rule is allowed
-	2. Test if outbound traffic without allowed egress rule is allowed
-	3. test traffic betwen SG with only ingress/egress rule"""
+	"""
+	Description: Test if SG is stateful
+            1. test if inbound traffic without allowed ingress rule is allowed
+            2. Test if outbound traffic without allowed egress rule is allowed
+            3. test traffic betwen SG with only ingress/egress rule
+        Steps:
+            1. define the topology for the test 
+            2. create the resources as defined in the topo
+            3. verify the traffic
+	Pass criteria: step 3 should pass
+	"""
 
         topology_class_name = None
 
@@ -681,7 +742,15 @@ class SecurityGroupRegressionTests6(BaseSGTest, VerifySecGroup, ConfigPolicy):
 
     @preposttest_wrapper
     def test_sg_multiproject(self):
-        """ Test SG across projects"""
+        """
+	Description: Test SG across projects
+        Steps:
+            1. define the topology for the test
+            2. create the resources as defined in the topo
+            3. verify the traffic
+        Pass criteria: step 3 should pass
+        """
+
 
         topology_class_name = None
 
@@ -717,8 +786,15 @@ class SecurityGroupRegressionTests6(BaseSGTest, VerifySecGroup, ConfigPolicy):
 
     @preposttest_wrapper
     def test_sg_no_rule(self):
-        """Test SG without any rule:
-           it should deny all traffic"""
+        """
+	Description: Test SG without any rule, it should deny all traffic
+        Steps:
+            1. define the topology for the test
+            2. create the resources as defined in the topo
+            3. verify the traffic denied
+        Pass criteria: step 3 should pass
+        """
+
 
         topology_class_name = None
 
@@ -772,10 +848,18 @@ class SecurityGroupRegressionTests7(BaseSGTest, VerifySecGroup, ConfigPolicy):
 
     @preposttest_wrapper
     def test_icmp_error_handling1(self):
-        """ Test ICMP error handling
-        1. ingress-udp from same SG, egress-all
-        2. Test with SG rule, ingress-egress-udp only
-        3. Test with SG rule, ingress-egress-all"""
+        """
+	Description: Test ICMP error handling
+            1. ingress-udp from same SG, egress-all
+            2. Test with SG rule, ingress-egress-udp only
+            3. Test with SG rule, ingress-egress-all
+        Steps:
+            1. define the topology for the test
+            2. create the resources as defined in the topo
+            3. verify the traffic for each of the cases mentioned in description
+        Pass criteria: step 3 should pass
+        """
+
 
         topology_class_name = None
 
@@ -896,8 +980,16 @@ class SecurityGroupRegressionTests7(BaseSGTest, VerifySecGroup, ConfigPolicy):
     @preposttest_wrapper
     def test_icmp_error_handling2(self):
         """
-        1. Test ICMP error handling with SG rules egress-udp only
-        2. Test ICMP error from agent"""
+	Description:
+            1. Test ICMP error handling with SG rules egress-udp only
+            2. Test ICMP error from agent
+        Steps:
+            1. define the topology for the test
+            2. create the resources as defined in the topo
+            3. verify the traffic for each of the cases mentioned in description
+        Pass criteria: step 3 should pass
+        """
+
 
         topology_class_name = None
         #
@@ -997,8 +1089,18 @@ class SecurityGroupRegressionTests7(BaseSGTest, VerifySecGroup, ConfigPolicy):
 
     @preposttest_wrapper
     def test_icmp_error_handling_from_mx_with_si(self):
-        """ Test ICMP error handling from MX with SI in the middle
-        1. uses traceroute util on the VM"""
+        """
+	Description: Test ICMP error handling from MX with SI in the middle
+            1. uses traceroute util on the VM
+        Steps:
+            1. define the topology for the test
+            2. create the resources as defined in the topo
+	    3. copy the traceroute pkg to VM and install
+	    4. run the traceroute to 8.8.8.8
+            5. verify through tcpdump if icmp error recvd on VM 
+        Pass criteria: step 5 should pass
+        """
+
 
         if ('MX_GW_TEST' not in os.environ) or (('MX_GW_TEST' in os.environ) and (os.environ.get('MX_GW_TEST') != '1')):
             self.logger.info(
@@ -1100,8 +1202,18 @@ class SecurityGroupRegressionTests7(BaseSGTest, VerifySecGroup, ConfigPolicy):
 
     @preposttest_wrapper
     def test_icmp_error_payload_matching(self):
-        """ Test ICMP error handling with payload diff. from original packet
-        1. icmp pakcet with payload matching should be accepted and others should be denied"""
+        """
+	Description: Test ICMP error handling with payload diff. from original packet
+            1. icmp pakcet with payload matching should be accepted and others should be denied
+        Steps:
+            1. define the topology for the test
+            2. create the resources as defined in the topo
+	    3. send the traffic from sender to unreachable port on recvr side(port 10000 used here), recvr will send icmp error to sender for "destination port unreachable"
+	    4. from recvr side send many other icmp error types in loop
+	    5. sender should recv only icmp error mentioned in step 3 and should NOT recv errors mentioned in step4
+        Pass criteria: step 5 should pass
+        """
+
 
         topology_class_name = None
         #
