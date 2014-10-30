@@ -7,7 +7,7 @@ from vn_test import MultipleVNFixture
 from vm_test import MultipleVMFixture
 from base import BaseSGTest
 from common.policy.config import ConfigPolicy
-from security_group import SecurityGroupFixture
+from security_group import SecurityGroupFixture,get_secgrp_id_from_name
 from vn_test import VNFixture
 from vm_test import VMFixture
 from tcutils.topo.topo_helper import *
@@ -26,6 +26,7 @@ class SecurityGroupRegressionTests1(BaseSGTest, VerifySecGroup, ConfigPolicy):
     @classmethod
     def setUpClass(cls):
         super(SecurityGroupRegressionTests1, cls).setUpClass()
+	cls.option = 'openstack'
 
     def runTest(self):
         pass
@@ -77,7 +78,7 @@ class SecurityGroupRegressionTests1(BaseSGTest, VerifySecGroup, ConfigPolicy):
                  'src_addresses': [{'security_group': 'local'}],
                  }]
         secgrp = self.config_sec_group(name=secgrp_name, entries=rule)
-        secgrp_id = secgrp.secgrp_fix._obj.uuid
+	secgrp_id = secgrp.secgrp_id
         vm_name = "test_sec_vm"
         vm = self.useFixture(VMFixture(
             project_name=self.inputs.project_name, connections=self.connections,
@@ -105,7 +106,10 @@ class SecurityGroupRegressionTests1(BaseSGTest, VerifySecGroup, ConfigPolicy):
         self.logger.info(
             "Try deleting the security group %s with back ref.", secgrp_name)
         try:
-            secgrp.secgrp_fix.cleanUp()
+            if secgrp.option == 'openstack':
+                secgrp.quantum_fixture.delete_security_group(secgrp.secgrp_id)
+            else:
+                secgrp.secgrp_fix.cleanUp()
         except Exception, msg:
             self.logger.info(msg)
             self.logger.info(
@@ -128,6 +132,7 @@ class SecurityGroupRegressionTests2(BaseSGTest, VerifySecGroup, ConfigPolicy):
     @classmethod
     def setUpClass(cls):
         super(SecurityGroupRegressionTests2, cls).setUpClass()
+	cls.option = 'openstack'
 
     def setUp(self):
         super(SecurityGroupRegressionTests2, self).setUp()
@@ -258,6 +263,7 @@ class SecurityGroupRegressionTests3(BaseSGTest, VerifySecGroup, ConfigPolicy):
     @classmethod
     def setUpClass(cls):
         super(SecurityGroupRegressionTests3, cls).setUpClass()
+	cls.option = 'openstack'
 
     def setUp(self):
         super(SecurityGroupRegressionTests3, self).setUp()
@@ -390,6 +396,7 @@ class SecurityGroupRegressionTests4(BaseSGTest, VerifySecGroup, ConfigPolicy):
     @classmethod
     def setUpClass(cls):
         super(SecurityGroupRegressionTests4, cls).setUpClass()
+	cls.option = 'openstack'
 
     def runTest(self):
         pass
@@ -413,9 +420,9 @@ class SecurityGroupRegressionTests4(BaseSGTest, VerifySecGroup, ConfigPolicy):
             topo = topology_class_name(
                 project=self.project.project_name,
                 username=self.project.username,
-                password=self.project.password, compute_node_list=self.inputs.compute_ips)
+                password=self.project.password, compute_node_list=self.inputs.compute_ips,config_option=self.option)
         except (AttributeError,NameError):
-            topo = topology_class_name(compute_node_list=self.inputs.compute_ips)
+            topo = topology_class_name(compute_node_list=self.inputs.compute_ips,config_option=self.option)
 
         #
         # Test setup: Configure policy, VN, & VM
@@ -424,7 +431,7 @@ class SecurityGroupRegressionTests4(BaseSGTest, VerifySecGroup, ConfigPolicy):
         # config_topo= {'policy': policy_fixt, 'vn': vn_fixture, 'vm': vm_fixture}
         setup_obj = self.useFixture(
             sdnTopoSetupFixture(self.connections, topo))
-	out = setup_obj.topo_setup(VmToNodeMapping=topo.vm_node_map)
+	out = setup_obj.topo_setup(VmToNodeMapping=topo.vm_node_map,config_option=self.option)
         self.logger.info("Setup completed with result %s" % (out['result']))
         self.assertEqual(out['result'], True, out['msg'])
         if out['result']:
@@ -441,6 +448,7 @@ class SecurityGroupRegressionTests5(BaseSGTest, VerifySecGroup, ConfigPolicy):
     @classmethod
     def setUpClass(cls):
         super(SecurityGroupRegressionTests5, cls).setUpClass()
+	cls.option = 'openstack'
 
     def setUp(self):
         super(SecurityGroupRegressionTests5, self).setUp()
@@ -524,6 +532,97 @@ class SecurityGroupRegressionTests5(BaseSGTest, VerifySecGroup, ConfigPolicy):
         return True
     #end test_sec_group_with_proto_double_rules_sg1
 
+    @preposttest_wrapper
+    def test_default_sg(self):
+        """test default security group
+        1. try to delete default sg, should fail
+        2. add/delete rules and verify the rules with traffic"""
+
+        self.logger.info("Configure the policy with allow any")
+        rules = [
+            {
+                'direction': '<>',
+                'protocol': 'any',
+                'source_network': self.vn1_name,
+                'src_ports': [0, -1],
+                'dest_network': self.vn2_name,
+                'dst_ports': [0, -1],
+                'simple_action': 'pass',
+            },
+        ]
+        self.config_policy_and_attach_to_vn(rules)
+
+        #try to delete default sg
+        secgrp_fq_name = ':'.join(['default-domain',
+                                self.inputs.project_name,
+                                'default'])
+        sg_id = get_secgrp_id_from_name(
+                        self.connections,
+                        secgrp_fq_name)
+        try:
+            self.quantum_fixture.delete_security_group(sg_id)
+        except Exception, msg:
+            self.logger.info(msg)
+            self.logger.info(
+                "Not able to delete the default security group as expected")
+        else:
+            try:
+                secgroup = self.vnc_lib.security_group_read(
+                    fq_name=secgrp_fq_name)
+                self.logger.info(
+                    "Not able to delete the default security group as expected")
+            except NoIdError:
+                errmsg = "default Security group deleted"
+                self.logger.error(errmsg)
+                assert False, errmsg
+
+        #delete egress rule and add new rules and verify with traffic
+        self.sg1_fix.delete_all_rules(sg_id)
+        rule = [{'direction': '<>',
+                'protocol': 'udp',
+                 'dst_addresses': [{'subnet': {'ip_prefix': '10.1.1.0', 'ip_prefix_len': 24}},
+                                   {'subnet': {'ip_prefix': '20.1.1.0', 'ip_prefix_len': 24}}],
+                 'dst_ports': [{'start_port': 0, 'end_port': -1}],
+                 'src_ports': [{'start_port': 0, 'end_port': -1}],
+                 'src_addresses': [{'security_group': 'local'}],
+                 },
+                {'direction': '<>',
+                 'protocol': 'udp',
+                 'src_addresses': [{'subnet': {'ip_prefix': '10.1.1.0', 'ip_prefix_len': 24}},
+                                   {'subnet': {'ip_prefix': '20.1.1.0', 'ip_prefix_len': 24}}],
+                 'src_ports': [{'start_port': 0, 'end_port': -1}],
+                 'dst_ports': [{'start_port': 0, 'end_port': -1}],
+                 'dst_addresses': [{'security_group': 'local'}],
+                 }]
+        secgrp_rules = self.sg1_fix.create_sg_rule_quantum(sg_id,secgrp_rules=rule)
+        assert secgrp_rules
+
+        sender = (self.vm1_fix, self.sg2_fix.secgrp_name)
+        receiver = (self.vm6_fix, 'default')
+        self.assert_traffic(sender, receiver, 'udp', 8000, 9000, 'pass')
+
+        #revert back default sg
+        self.sg1_fix.delete_all_rules(sg_id)
+        rule = [{'direction': '<>',
+                'protocol': 'any',
+                 'dst_addresses': [{'subnet': {'ip_prefix': '0.0.0.0', 'ip_prefix_len': 0}}],
+                 'dst_ports': [{'start_port': 0, 'end_port': -1}],
+                 'src_ports': [{'start_port': 0, 'end_port': -1}],
+                 'src_addresses': [{'security_group': 'local'}],
+                 },
+                {'direction': '<>',
+                 'protocol': 'any',
+                 'src_addresses': [{'security_group':secgrp_fq_name}],
+                 'src_ports': [{'start_port': 0, 'end_port': -1}],
+                 'dst_ports': [{'start_port': 0, 'end_port': -1}],
+                 'dst_addresses': [{'security_group': 'local'}],
+                 }]
+        secgrp_rules = self.sg1_fix.create_sg_rule_quantum(sg_id,secgrp_rules=rule)
+        assert secgrp_rules
+
+        return True
+        #end test_default_sg
+
 #end class SecurityGroupRegressionTests5
 
 class SecurityGroupRegressionTests6(BaseSGTest, VerifySecGroup, ConfigPolicy):
@@ -531,6 +630,7 @@ class SecurityGroupRegressionTests6(BaseSGTest, VerifySecGroup, ConfigPolicy):
     @classmethod
     def setUpClass(cls):
         super(SecurityGroupRegressionTests6, cls).setUpClass()
+	cls.option = 'openstack'
 
     def runTest(self):
         pass
@@ -559,9 +659,9 @@ class SecurityGroupRegressionTests6(BaseSGTest, VerifySecGroup, ConfigPolicy):
             topo.build_topo_sg_stateful(
                 project=self.project.project_name,
                 username=self.project.username,
-                password=self.project.password)
+                password=self.project.password,config_option=self.option)
         except (AttributeError,NameError):
-            topo.build_topo_sg_stateful()
+            topo.build_topo_sg_stateful(config_option=self.option)
         #
         # Test setup: Configure policy, VN, & VM
         # return {'result':result, 'msg': err_msg, 'data': [self.topo, config_topo]}
@@ -569,7 +669,7 @@ class SecurityGroupRegressionTests6(BaseSGTest, VerifySecGroup, ConfigPolicy):
         # config_topo= {'policy': policy_fixt, 'vn': vn_fixture, 'vm': vm_fixture}
         setup_obj = self.useFixture(
             sdnTopoSetupFixture(self.connections, topo))
-        out = setup_obj.topo_setup()
+        out = setup_obj.topo_setup(config_option=self.option)
         self.logger.info("Setup completed with result %s" % (out['result']))
         self.assertEqual(out['result'], True, out['msg'])
         if out['result']:
@@ -605,7 +705,7 @@ class SecurityGroupRegressionTests6(BaseSGTest, VerifySecGroup, ConfigPolicy):
         config_topo = {}
         setup_obj = self.useFixture(
             sdnTopoSetupFixture(self.connections, topo))
-        out = setup_obj.sdn_topo_setup()
+        out = setup_obj.sdn_topo_setup(config_option=self.option)
         self.assertEqual(out['result'], True, out['msg'])
         if out['result'] == True:
             topo_objs, config_topo, vm_fip_info = out['data']
@@ -617,8 +717,8 @@ class SecurityGroupRegressionTests6(BaseSGTest, VerifySecGroup, ConfigPolicy):
 
     @preposttest_wrapper
     def test_sg_no_rule(self):
-        '''Test SG without any rule:
-           it should deny all traffic'''
+        """Test SG without any rule:
+           it should deny all traffic"""
 
         topology_class_name = None
 
@@ -637,9 +737,9 @@ class SecurityGroupRegressionTests6(BaseSGTest, VerifySecGroup, ConfigPolicy):
             topo.build_topo(
                 project=self.project.project_name,
                 username=self.project.username,
-                password=self.project.password)
+                password=self.project.password,config_option=self.option)
         except (AttributeError,NameError):
-            topo.build_topo()
+            topo.build_topo(config_option=self.option)
         #
         # Test setup: Configure policy, VN, & VM
         # return {'result':result, 'msg': err_msg, 'data': [self.topo, config_topo]}
@@ -647,7 +747,7 @@ class SecurityGroupRegressionTests6(BaseSGTest, VerifySecGroup, ConfigPolicy):
         # config_topo= {'policy': policy_fixt, 'vn': vn_fixture, 'vm': vm_fixture}
         setup_obj = self.useFixture(
             sdnTopoSetupFixture(self.connections, topo))
-        out = setup_obj.topo_setup()
+        out = setup_obj.topo_setup(config_option=self.option)
         self.logger.info("Setup completed with result %s" % (out['result']))
         self.assertEqual(out['result'], True, out['msg'])
         if out['result']:
@@ -665,6 +765,7 @@ class SecurityGroupRegressionTests7(BaseSGTest, VerifySecGroup, ConfigPolicy):
     @classmethod
     def setUpClass(cls):
         super(SecurityGroupRegressionTests7, cls).setUpClass()
+	cls.option = 'openstack'
 
     def runTest(self):
         pass
@@ -693,9 +794,9 @@ class SecurityGroupRegressionTests7(BaseSGTest, VerifySecGroup, ConfigPolicy):
             topo.build_topo(
                 project=self.project.project_name,
                 username=self.project.username,
-                password=self.project.password)
+                password=self.project.password,config_option=self.option)
         except (AttributeError,NameError):
-            topo.build_topo()
+            topo.build_topo(config_option=self.option)
         #
         # Test setup: Configure policy, VN, & VM
         # return {'result':result, 'msg': err_msg, 'data': [self.topo, config_topo]}
@@ -703,7 +804,7 @@ class SecurityGroupRegressionTests7(BaseSGTest, VerifySecGroup, ConfigPolicy):
         # config_topo= {'policy': policy_fixt, 'vn': vn_fixture, 'vm': vm_fixture}
         setup_obj = self.useFixture(
             sdnTopoSetupFixture(self.connections, topo))
-        out = setup_obj.topo_setup()
+        out = setup_obj.topo_setup(config_option=self.option)
         self.logger.info("Setup completed with result %s" % (out['result']))
         self.assertEqual(out['result'], True, out['msg'])
         if out['result']:
@@ -815,9 +916,9 @@ class SecurityGroupRegressionTests7(BaseSGTest, VerifySecGroup, ConfigPolicy):
                 project=self.project.project_name,
                 username=self.project.username,
                 password=self.project.password,
-                compute_node_list=self.inputs.compute_ips)
+                compute_node_list=self.inputs.compute_ips,config_option=self.option)
         except (AttributeError,NameError):
-            topo.build_topo2(compute_node_list=self.inputs.compute_ips)
+            topo.build_topo2(compute_node_list=self.inputs.compute_ips,config_option=self.option)
         #
         # Test setup: Configure policy, VN, & VM
         # return {'result':result, 'msg': err_msg, 'data': [self.topo, config_topo]}
@@ -825,7 +926,7 @@ class SecurityGroupRegressionTests7(BaseSGTest, VerifySecGroup, ConfigPolicy):
         # config_topo= {'policy': policy_fixt, 'vn': vn_fixture, 'vm': vm_fixture}
         setup_obj = self.useFixture(
             sdnTopoSetupFixture(self.connections, topo))
-        out = setup_obj.topo_setup(VmToNodeMapping=topo.vm_node_map)
+        out = setup_obj.topo_setup(VmToNodeMapping=topo.vm_node_map,config_option=self.option)
         self.logger.info("Setup completed with result %s" % (out['result']))
         self.assertEqual(out['result'], True, out['msg'])
         if out['result']:
@@ -840,7 +941,13 @@ class SecurityGroupRegressionTests7(BaseSGTest, VerifySecGroup, ConfigPolicy):
         dst_vm_fix = config_topo['vm'][dst_vm_name]
         src_vn_fix = config_topo['vn'][topo_obj.vn_of_vm[src_vm_name]]
 
-        dst_vm_fix.remove_security_group(secgrp='default')
+        default_secgrp_id = get_secgrp_id_from_name(
+                                self.connections,
+                                ':'.join([self.inputs.domain_name,
+                                        self.inputs.project_name,
+                                        'default']))
+
+        dst_vm_fix.remove_security_group(secgrp=default_secgrp_id)
         #start tcpdump on src VM
         filters = '\'(icmp[0]=3 and icmp[1]=3 and src host %s and dst host %s)\'' % (dst_vm_fix.vm_ip, src_vm_fix.vm_ip)
         session, pcap = start_tcpdump_on_vm(self, src_vm_fix, src_vn_fix, filters = filters)
@@ -918,9 +1025,9 @@ class SecurityGroupRegressionTests7(BaseSGTest, VerifySecGroup, ConfigPolicy):
                 project=self.project.project_name,
                 username=self.project.username,
                 password=self.project.password,
-                public_vn_info=public_vn_info)
+                public_vn_info=public_vn_info,config_option=self.option)
         except (AttributeError,NameError):
-            topo.build_topo(public_vn_info=public_vn_info)
+            topo.build_topo(public_vn_info=public_vn_info,config_option=self.option)
         #
         # Test setup: Configure policy, VN, & VM
         # return {'result':result, 'msg': err_msg, 'data': [self.topo, config_topo]}
@@ -928,7 +1035,7 @@ class SecurityGroupRegressionTests7(BaseSGTest, VerifySecGroup, ConfigPolicy):
         # config_topo= {'policy': policy_fixt, 'vn': vn_fixture, 'vm': vm_fixture}
         setup_obj = self.useFixture(
             sdnTopoSetupFixture(self.connections, topo))
-        out = setup_obj.topo_setup(skip_verify='no')
+        out = setup_obj.topo_setup(skip_verify='no',config_option=self.option)
         self.logger.info("Setup completed with result %s" % (out['result']))
         self.assertEqual(out['result'], True, out['msg'])
         if out['result']:
@@ -1013,9 +1120,9 @@ class SecurityGroupRegressionTests7(BaseSGTest, VerifySecGroup, ConfigPolicy):
                 project=self.project.project_name,
                 username=self.project.username,
                 password=self.project.password,
-                compute_node_list=self.inputs.compute_ips)
+                compute_node_list=self.inputs.compute_ips,config_option=self.option)
         except (AttributeError,NameError):
-            topo.build_topo2(compute_node_list=self.inputs.compute_ips)
+            topo.build_topo2(compute_node_list=self.inputs.compute_ips,config_option=self.option)
         #
         # Test setup: Configure policy, VN, & VM
         # return {'result':result, 'msg': err_msg, 'data': [self.topo, config_topo]}
@@ -1023,7 +1130,7 @@ class SecurityGroupRegressionTests7(BaseSGTest, VerifySecGroup, ConfigPolicy):
         # config_topo= {'policy': policy_fixt, 'vn': vn_fixture, 'vm': vm_fixture}
         setup_obj = self.useFixture(
             sdnTopoSetupFixture(self.connections, topo))
-        out = setup_obj.topo_setup(VmToNodeMapping=topo.vm_node_map)
+        out = setup_obj.topo_setup(VmToNodeMapping=topo.vm_node_map,config_option=self.option)
         self.logger.info("Setup completed with result %s" % (out['result']))
         self.assertEqual(out['result'], True, out['msg'])
         if out['result']:
@@ -1038,7 +1145,13 @@ class SecurityGroupRegressionTests7(BaseSGTest, VerifySecGroup, ConfigPolicy):
         dst_vm_fix = config_topo['vm'][dst_vm_name]
         src_vn_fix = config_topo['vn'][topo_obj.vn_of_vm[src_vm_name]]
 
-        dst_vm_fix.remove_security_group(secgrp='default')
+        default_secgrp_id = get_secgrp_id_from_name(
+                                self.connections,
+                                ':'.join([self.inputs.domain_name,
+                                        self.inputs.project_name,
+                                        'default']))
+
+        dst_vm_fix.remove_security_group(secgrp=default_secgrp_id)
         #start tcpdump on src VM
         filters = 'icmp'
         session, pcap = start_tcpdump_on_vm(self, src_vm_fix, src_vn_fix, filters = filters)
@@ -1046,32 +1159,34 @@ class SecurityGroupRegressionTests7(BaseSGTest, VerifySecGroup, ConfigPolicy):
         sender1, receiver1 = self.start_traffic_scapy(src_vm_fix, dst_vm_fix, 'udp',
                                 port, port,recvr=False)
 
+	icmp_code = 0
         for icmp_type in xrange(0,3):
                 sender, receiver = self.start_traffic_scapy(dst_vm_fix, src_vm_fix, 'icmp',
                                         port, port, payload="payload",
-                                        icmp_type=icmp_type, icmp_code=0,count=1)
+                                        icmp_type=icmp_type, icmp_code=icmp_code,count=1)
                 sent, recv = self.stop_traffic_scapy(sender, receiver)
-                assert sent != 0, "sent count in ZERO for icmp type %s and code %s" % (icmp_type, icmp_code)
-                assert recv == 0, "recv count in not ZERO for icmp type %s and code %s" % (icmp_type, icmp_code)
+                assert sent != 0, "sent count is ZERO for icmp type %s and code %s" % (icmp_type, icmp_code)
+                assert recv == 0, "recv count is not ZERO for icmp type %s and code %s" % (icmp_type, icmp_code)
 
         #type 3 , code (0,15)
+	icmp_type = 3
         for icmp_code in xrange(0,16):
                 sender, receiver = self.start_traffic_scapy(dst_vm_fix, src_vm_fix, 'icmp',
                                         port, port, payload="payload",
-                                        icmp_type=3, icmp_code=icmp_code,count=1)
+                                        icmp_type=icmp_type, icmp_code=icmp_code,count=1)
                 sent, recv = self.stop_traffic_scapy(sender, receiver)
-                assert sent != 0, "sent count in ZERO for icmp type %s and code %s" % (icmp_type, icmp_code)
-                assert recv == 0, "recv count in not ZERO for icmp type %s and code %s" % (icmp_type, icmp_code)
+                assert sent != 0, "sent count is ZERO for icmp type %s and code %s" % (icmp_type, icmp_code)
+                assert recv == 0, "recv count is not ZERO for icmp type %s and code %s" % (icmp_type, icmp_code)
 
         #type (4,11), code 0
+	icmp_code = 0
         for icmp_type in xrange(4,12):
                 sender, receiver = self.start_traffic_scapy(dst_vm_fix, src_vm_fix, 'icmp',
                                         port, port, payload="payload",
-                                        icmp_type=icmp_type, icmp_code=0,count=1)
+                                        icmp_type=icmp_type, icmp_code=icmp_code,count=1)
                 sent, recv = self.stop_traffic_scapy(sender, receiver)
-                assert sent != 0, "sent count in ZERO for icmp type %s and code %s" % (icmp_type, icmp_code)
-                assert recv == 0, "recv count in not ZERO for icmp type %s and code %s" % (icmp_type, icmp_code)
-
+                assert sent != 0, "sent count is ZERO for icmp type %s and code %s" % (icmp_type, icmp_code)
+                assert recv == 0, "recv count is not ZERO for icmp type %s and code %s" % (icmp_type, icmp_code)
 
         #verify packet count and stop tcpdump
         assert stop_tcpdump_on_vm_verify_cnt(self, session, pcap)
@@ -1081,3 +1196,41 @@ class SecurityGroupRegressionTests7(BaseSGTest, VerifySecGroup, ConfigPolicy):
         #end test_icmp_error_payload_matching
 
 #end class SecurityGroupRegressionTests7
+
+#creating new classes to run all tests with contrail apis
+class SecurityGroupRegressionTests1_contrail(SecurityGroupRegressionTests1):
+    @classmethod
+    def setUpClass(cls):
+        super(SecurityGroupRegressionTests1, cls).setUpClass()
+        cls.option = 'contrail'
+class SecurityGroupRegressionTests2_contrail(SecurityGroupRegressionTests2):
+    @classmethod
+    def setUpClass(cls):
+        super(SecurityGroupRegressionTests2, cls).setUpClass()
+        cls.option = 'contrail'
+class SecurityGroupRegressionTests3_contrail(SecurityGroupRegressionTests3):
+    @classmethod
+    def setUpClass(cls):
+        super(SecurityGroupRegressionTests3, cls).setUpClass()
+        cls.option = 'contrail'
+class SecurityGroupRegressionTests4_contrail(SecurityGroupRegressionTests4):
+    @classmethod
+    def setUpClass(cls):
+        super(SecurityGroupRegressionTests4, cls).setUpClass()
+        cls.option = 'contrail'
+class SecurityGroupRegressionTests5_contrail(SecurityGroupRegressionTests5):
+    @classmethod
+    def setUpClass(cls):
+        super(SecurityGroupRegressionTests5, cls).setUpClass()
+        cls.option = 'contrail'
+class SecurityGroupRegressionTests6_contrail(SecurityGroupRegressionTests6):
+    @classmethod
+    def setUpClass(cls):
+        super(SecurityGroupRegressionTests6, cls).setUpClass()
+        cls.option = 'contrail'
+class SecurityGroupRegressionTests7_contrail(SecurityGroupRegressionTests7):
+    @classmethod
+    def setUpClass(cls):
+        super(SecurityGroupRegressionTests7, cls).setUpClass()
+        cls.option = 'contrail'
+

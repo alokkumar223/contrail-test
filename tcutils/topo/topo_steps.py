@@ -79,7 +79,7 @@ def createProject(self):
 
 def createSec_group(self, option='contrail'):
     if option == 'openstack':
-        create_sg_contrail(self)
+	create_sg_quantum(self)
     elif option == 'contrail':
         create_sg_contrail(self)
     else:
@@ -87,6 +87,30 @@ def createSec_group(self, option='contrail'):
     return self
 # end of createSec_group
 
+def create_sg_quantum(self):
+    if hasattr(self.topo, 'sg_list'):
+        self.sg_uuid = {}
+        self.secgrp_fixture = {}
+        for sg_name in self.topo.sg_list:
+            result = True
+            msg = []
+            self.logger.info("Setup step: Creating Security Group")
+            self.secgrp_fixture[sg_name] = self.useFixture(
+                SecurityGroupFixture(
+                    inputs=self.inputs,
+                    connections=self.connections,
+                    domain_name=self.topo.domain,
+                    project_name=self.topo.project,
+                    secgrp_name=sg_name,
+                    secgrp_id=None,
+                    secgrp_entries=self.topo.sg_rules[sg_name],option='openstack'))
+            self.sg_uuid[sg_name] = self.secgrp_fixture[sg_name].secgrp_id
+            if self.skip_verify == 'no':
+                ret, msg = self.secgrp_fixture[sg_name].verify_on_setup()
+                assert ret, "Verifications for security group is :%s failed and its error message: %s" % (
+                    sg_name, msg)
+    return self
+# end of create_sg_quantum 
 
 def create_sg_contrail(self):
     if hasattr(self.topo, 'sg_list'):
@@ -104,7 +128,7 @@ def create_sg_contrail(self):
                     project_name=self.topo.project,
                     secgrp_name=sg_name,
                     secgrp_id=None,
-                    secgrp_entries=self.topo.sg_rules[sg_name]))
+                    secgrp_entries=self.topo.sg_rules[sg_name],option='contrail'))
             self.sg_uuid[sg_name] = self.secgrp_fixture[sg_name].secgrp_id
             if self.skip_verify == 'no':
                 ret, msg = self.secgrp_fixture[sg_name].verify_on_setup()
@@ -335,12 +359,12 @@ def createVNContrail(self):
     self.vn_fixture = {}
     self.vn_of_cn = {}
     for vn in self.topo.vnet_list:
-        for ipam_info in self.topo.vn_nets[vn]:
+	for ipam_info in self.topo.vn_nets[vn]:
             ipam_info = list(ipam_info)
             ipam_info[0] = self.conf_ipam_objs[vn]
             ipam_info = tuple(ipam_info)
         self.vn_fixture[vn] = self.useFixture(
-            VirtualNetworkTestFixtureGen(
+                VirtualNetworkTestFixtureGen(
                 self.vnc_lib,
                 virtual_network_name=vn,
                 parent_fixt=self.project_parent_fixt,

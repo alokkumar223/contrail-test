@@ -152,6 +152,7 @@ class sdnTopoSetupFixture(fixtures.Fixture):
                                         "project='" + project +
                                         "',username='" + self.topo.user_of_project[project] +
                                         "',password='" + self.topo.pass_of_project[project] +
+					"',config_option='" + config_option +
                                         "')")
             except (NameError, AttributeError):
                 topo[project] = eval("topo_obj.build_topo_" + project + "()")

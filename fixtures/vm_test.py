@@ -22,6 +22,7 @@ from tcutils.pkgs.install import PkgHost, build_and_install
 
 env.disable_known_hosts = True
 from webui_test import *
+from security_group import get_secgrp_id_from_name, list_sg_rules
 #output.debug= True
 
 #@contrail_fix_ext ()
@@ -214,6 +215,12 @@ class VMFixture(fixtures.Fixture):
     def add_security_group(self, secgrp):
         self.nova_fixture.add_security_group(self.vm_obj.id, secgrp)
 
+	result, msg = self.verify_sec_grp_in_agent(secgrp)
+	assert result, msg	
+
+	result, msg = self.verify_sg_acls_in_agent(secgrp)
+	assert result, msg
+
     def remove_security_group(self, secgrp):
         self.nova_fixture.remove_security_group(self.vm_obj.id, secgrp)
 
@@ -234,6 +241,68 @@ class VMFixture(fixtures.Fixture):
                                                                      self.vm_name)
         self.logger.warn(errmsg)
         return False, errmsg
+
+    @retry(delay=2, tries=2)
+    def verify_sec_grp_in_agent(self, secgrp, domain='default-domain'):
+        #this method verifies sg secgrp attached to vm info in agent
+        secgrp_fq_name = ':'.join([domain,
+                                self.project_name,
+                                secgrp])
+
+        sg_id = get_secgrp_id_from_name(
+                        self.connections,
+                        secgrp_fq_name)
+
+        nova_host = self.inputs.host_data[
+            self.nova_fixture.get_nova_host_of_vm(self.vm_obj)]
+        self.vm_node_ip = nova_host['host_ip']
+        inspect_h = self.agent_inspect[self.vm_node_ip]
+        sg_list = inspect_h.get_sg_list()
+        if sg_list:
+            for sg in sg_list:
+                if sg_id == sg['sg_uuid']:
+                    self.logger.info(
+                        "Agent: Security group %s is attached to the VM %s", \
+                            secgrp, self.vm_name)
+                    return True, None
+
+        errmsg = "Agent: Security group %s is NOT attached to the VM %s" % (secgrp,
+                                                                     self.vm_name)
+        return False, errmsg
+
+    @retry(delay=2, tries=2)
+    def verify_sg_acls_in_agent(self, secgrp, domain='default-domain'):
+        secgrp_fq_name = ':'.join([domain,
+                                self.project_name,
+                                secgrp])
+
+        sg_id = get_secgrp_id_from_name(
+                        self.connections,
+                        secgrp_fq_name)
+
+        rules = list_sg_rules(self.connections, sg_id)
+        nova_host = self.inputs.host_data[
+            self.nova_fixture.get_nova_host_of_vm(self.vm_obj)]
+        self.vm_node_ip = nova_host['host_ip']
+        inspect_h = self.agent_inspect[self.vm_node_ip]
+        acls_list = inspect_h.get_acls_list()
+
+        errmsg = "sg acl rule not found in agent"
+        result = False
+        for rule in rules:
+            result = False
+            for acl in acls_list:
+                for r in acl['entries']:
+                    if r.has_key('uuid'):
+                        if r['uuid'] == rule['id']:
+                            result = True
+                            break
+                if result:
+                    break
+            if not result:
+                return result, errmsg
+
+        return True, None
 
     def verify_on_setup(self, force=False):
         if self.inputs.verify_on_setup == 'False' and not force:

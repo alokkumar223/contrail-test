@@ -72,6 +72,9 @@ class BaseSGTest(test.BaseTestCase):
         (self.vm5_name, self.vm5_fix) = vms[4]
         (self.vm6_name, self.vm6_fix) = vms[5]
 
+        self.logger.info("Verifying setup of security group tests.")
+        self.verify_sg_test_resources()
+
         self.logger.info("Adding the sec groups to the VM's")
         self.vm1_fix.add_security_group(secgrp=self.sg1_name)
         self.vm1_fix.add_security_group(secgrp=self.sg2_name)
@@ -91,8 +94,6 @@ class BaseSGTest(test.BaseTestCase):
         self.vm4_fix.remove_security_group(secgrp=default_secgrp_id)
         self.vm5_fix.remove_security_group(secgrp=default_secgrp_id)
 
-        self.logger.info("Verifying setup of security group tests.")
-        self.verify_sg_test_resources()
         self.logger.info(
             "Finished configuring setup for security group tests.")
 
@@ -176,7 +177,7 @@ class BaseSGTest(test.BaseTestCase):
     def config_sec_group(self, name, secgrpid=None, entries=None):
         secgrp_fixture = self.useFixture(SecurityGroupFixture(self.inputs,
                                                               self.connections, self.inputs.domain_name, self.inputs.project_name,
-                                                              secgrp_name=name, secgrp_id=secgrpid, secgrp_entries=entries))
+                                                              secgrp_name=name, secgrp_id=secgrpid, secgrp_entries=entries,option=self.option))
         result, msg = secgrp_fixture.verify_on_setup()
         assert result, msg
         return secgrp_fixture
