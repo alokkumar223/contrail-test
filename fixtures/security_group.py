@@ -49,7 +49,6 @@ class SecurityGroupFixture(ContrailFixture):
                 (self.secgrp_name))
         else:
             if self.option == 'openstack':
-                self.logger.info("****SG-quantum****")
                 secgrp_q = self.quantum_fixture.create_security_group(self.secgrp_name)
                 if not secgrp_q:
                     self.logger.error("security group creation failed through quantum")
@@ -60,7 +59,6 @@ class SecurityGroupFixture(ContrailFixture):
                 if not secgrp_rules:
                     return False
             else:
-                self.logger.info("****SG-contrail****")
                 self.secgrp_fix = self.useFixture(
                     SecurityGroupTestFixtureGen(conn_drv=self.vnc_lib_h,
                                             security_group_name=self.secgrp_name,
