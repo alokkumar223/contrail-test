@@ -47,10 +47,15 @@ def retry(tries=5, delay=3):
 
             result = f(*args, **kwargs)  # first attempt
             rv = result
+            final = False
             if type(result) is tuple:
                 rv = result[0]
+                if 'final' in result:
+                    final = True
             if type(result) is dict:
                 rv = result['result']
+                if 'final' in result.keys() and result['final']:
+                    final = True
             while mtries > 0:
                 if rv is True:  # Done on success
                     if type(result) is tuple:
@@ -59,6 +64,8 @@ def retry(tries=5, delay=3):
                         return {'result': True, 'msg': result['msg']}
                     else:
                         return True
+                if final:
+                    break
                 mtries -= 1      # consume an attempt
                 time.sleep(mdelay)  # wait...
 
@@ -315,11 +322,15 @@ def get_random_name(prefix=None):
 
 
 def get_random_cidr(mask='24'):
+    # TODO
+    # Need to make it work for any mask, not just /16 or /24
     first_octet = random.randint(1, 126)
     second_octet = random.randint(0, 254)
     third_octet = random.randint(0, 254)
-    return "%i.%i.%i.0/%s" % (first_octet, second_octet, third_octet, mask)
-
+    if mask == '24':
+        return "%i.%i.%i.0/%s" % (first_octet, second_octet, third_octet, mask)
+    elif mask == '16':
+        return "%i.%i.0.0/%s" % (first_octet, second_octet,  mask)
 
 def get_an_ip(cidr, offset=0):
     return str(IPNetwork(cidr)[offset])
@@ -396,3 +407,19 @@ class Lock:
 
     def __del__(self):
         self.handle.close()
+
+def read_config_option(config, section, option, default_option):
+    ''' Read the config file. If the option/section is not present, return the default_option
+    '''
+    try:
+        val = config.get(section, option)
+        if val.lower() == 'true':
+            val = True
+        elif val.lower() == 'false' or val.lower() == 'none':
+            val = False
+        elif not val:
+            val = default_option
+        return val
+    except (ConfigParser.NoOptionError, ConfigParser.NoSectionError):
+        return default_option
+# end read_config_option

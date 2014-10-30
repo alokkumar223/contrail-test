@@ -117,7 +117,7 @@ function testr_init {
 function send_mail {
   if [ $send_mail -eq 1 ] ; then
      if [ -f report/junit-noframes.html ]; then
-        ${wrapper} python tools/send_mail.py $1 $2
+        ${wrapper} python tools/send_mail.py $1 $2 $3
      fi
   fi
 }
@@ -174,7 +174,7 @@ function generate_html {
 function upload_to_web_server {
   if [ $upload -eq 1 ] ; then
       ${wrapper} python tools/upload_to_webserver.py $TEST_CONFIG_FILE $REPORT_DETAILS_FILE $REPORT_FILE
-  fi 
+  fi
 }
 
 if [ $never_venv -eq 0 ]
@@ -239,7 +239,7 @@ if [ $? -eq 0 ];then
 fi
 }
 
-export PYTHONPATH=$PATH:$PWD/scripts:$PWD/fixtures
+export PYTHONPATH=$PATH:$PWD/scripts:$PWD/fixtures:$PWD
 apply_testtools_patch_for_centos
 
 if [[ ! -z $path ]];then
@@ -264,12 +264,12 @@ if [[ -z $path ]] && [[ -z $testrargs ]];then
     run_tests_serial
 fi
 sleep 2
-export PYTHONPATH=$PATH:$PWD/scripts:$PWD/fixtures:$PWD
+
 python tools/report_gen.py $TEST_CONFIG_FILE $REPORT_DETAILS_FILE
 generate_html 
 upload_to_web_server
 sleep 2
-send_mail $TEST_CONFIG_FILE $REPORT_FILE
+send_mail $TEST_CONFIG_FILE $REPORT_FILE $REPORT_DETAILS_FILE
 retval=$?
 
 exit $retval

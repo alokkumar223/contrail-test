@@ -23,6 +23,12 @@ from tcutils.pkgs.install import PkgHost, build_and_install
 env.disable_known_hosts = True
 from webui_test import *
 from security_group import get_secgrp_id_from_name, list_sg_rules
+try:
+    from webui_test import *
+except ImportError:
+    pass
+
+from security_group import get_secgrp_id_from_name, list_sg_rules
 #output.debug= True
 
 #@contrail_fix_ext ()
@@ -125,7 +131,7 @@ class VMFixture(fixtures.Fixture):
         self.userdata = userdata
         self.vm_username = None
         self.vm_password = None
-        if self.inputs.webui_verification_flag:
+        if self.inputs.verify_thru_gui():
             self.browser = self.connections.browser
             self.browser_openstack = self.connections.browser_openstack
             self.webui = WebuiTest(self.connections, self.inputs)
@@ -154,7 +160,7 @@ class VMFixture(fixtures.Fixture):
                 self.logger.debug('VM %s already present, not creating it'
                                   % (self.vm_name))
         else:
-            if self.inputs.webui_config_flag:
+            if self.inputs.is_gui_based_configuration():
                 self.webui.create_vm_in_openstack(self)
             else:
                 objs = self.nova_fixture.create_vm(
@@ -191,8 +197,8 @@ class VMFixture(fixtures.Fixture):
                                           % (vm_obj.name))
                     self.vm_launch_flag = self.vm_launch_flag and False
                     return False
-                self.vm_ips.append(
-                    self.nova_fixture.get_vm_ip(vm_obj, vn_name)[0])
+            self.vm_ips =self.nova_fixture.get_vm_ip(vm_obj, vn_name)
+            #self.nova_fixture.get_vm_ip(vm_obj, vn_name)[0])
             with self.printlock:
                 self.logger.info('VM %s launched on Node %s'
                                  % (vm_obj.name, self.nova_fixture.get_nova_host_of_vm(vm_obj)))
@@ -305,7 +311,7 @@ class VMFixture(fixtures.Fixture):
         return True, None
 
     def verify_on_setup(self, force=False):
-        if self.inputs.verify_on_setup == 'False' and not force:
+        if not (self.inputs.verify_on_setup or force):
             self.logger.info('Skipping VM %s verification' % (self.vm_name))
             return True
         result = True
@@ -314,12 +320,16 @@ class VMFixture(fixtures.Fixture):
             result = result and False
             return result
         vm_status = self.nova_fixture.wait_till_vm_is_active(self.vm_obj)
+        if vm_status[1] in 'ERROR':
+            self.logger.warn("VM in error state. Asserting...")
+            return False
+
         if vm_status[1] != 'ACTIVE':
             result = result and False
             return result
 
         self.verify_vm_flag = result and vm_status[0] 
-        if self.inputs.webui_verification_flag:
+        if self.inputs.verify_thru_gui():
             self.webui.verify_vm_in_webui(self)
         result = result and self.verify_vm_in_api_server()
         if not result:
@@ -609,10 +619,17 @@ class VMFixture(fixtures.Fixture):
                 vn_fq_name]['ucindex']
             if fw_mode != unicode('l2'):
                 try:
-                    self.agent_path[vn_fq_name] = inspect_h.get_vna_active_route(
-                        vrf_id=self.agent_vrf_id[vn_fq_name],
-                        ip=self.vm_ip_dict[vn_fq_name],
-                        prefix='32')
+                   vm_ip=self.vm_ip_dict[vn_fq_name]
+                   if ':' in vm_ip :
+                       self.agent_path[vn_fq_name] = inspect_h.get_ipv6_vna_active_route(
+                                                     vrf_id=self.agent_vrf_id[vn_fq_name],
+                                                     ip=self.vm_ip_dict[vn_fq_name],
+                                                      prefix='128')
+                   else:
+                       self.agent_path[vn_fq_name] = inspect_h.get_vna_active_route(
+                                                     vrf_id=self.agent_vrf_id[vn_fq_name],
+                                                     ip=self.vm_ip_dict[vn_fq_name],
+                                                      prefix='32')
                 except Exception as e:
                     return False
                 if not self.agent_path:
@@ -1084,9 +1101,13 @@ class VMFixture(fixtures.Fixture):
                     #vn_name= vn_fq_name.split(':')[-1]
                     #ri_name= vn_fq_name + ':' + vn_name
                     #self.ri_names[vn_fq_name]= ri_name
-                    cn_routes = self.cn_inspect[cn].get_cn_route_table_entry(
-                        ri_name=ri_name,
-                        prefix=self.vm_ip_dict[vn_fq_name] + '/32')
+                    if ':' in self.vm_ip_dict[vn_fq_name] :
+                        cn_routes = self.cn_inspect[cn].get_cn_ipv6_route_table_entry(
+                        ri_name=ri_name, prefix=self.vm_ip_dict[vn_fq_name] + '/128')
+                    else:
+ 
+                        cn_routes = self.cn_inspect[cn].get_cn_route_table_entry(
+                                    ri_name=ri_name, prefix=self.vm_ip_dict[vn_fq_name] + '/32')
                     if not cn_routes:
                         with self.printlock:
                             self.logger.warn(
@@ -1129,6 +1150,11 @@ class VMFixture(fixtures.Fixture):
                 else:
                     ethernet_tag ="2-0:0-0"
                 prefix = ethernet_tag + '-' + prefix
+                #currently mac + ipv6 doesnot supprt so for ipv6 address it will return true
+                if ':' in self.vm_ip_dict[vn_fq_name]  :
+                    self.logger.info(
+                    'Skipping the layer 2 verification of %s control node for ipv6 network since its not supporting' % (cn))
+                    return True
                 cn_l2_routes = self.cn_inspect[cn].get_cn_route_table_entry(
                     ri_name=ri_name, prefix=prefix, table='evpn.0')
                 if not cn_l2_routes:
@@ -1270,7 +1296,11 @@ class VMFixture(fixtures.Fixture):
                     return False
                 ops_data = ops_intf_list[ops_index]
                 if fw_mode != unicode('l2'):
-                    if self.vm_ip_dict[vn_fq_name] != ops_data['ip_address']:
+                    if ':' in self.vm_ip_dict[vn_fq_name] :
+                        op_data=ops_data['ip6_address']
+                    else:
+                        op_data=ops_data['ip_address']
+                    if self.vm_ip_dict[vn_fq_name] != op_data :
                         self.logger.warn(
                             "VM %s IP Address of %s not in Opserver VM view"
                             " " % (self.vm_name, self.vm_ip_dict[vn_fq_name]))
@@ -1414,7 +1444,7 @@ class VMFixture(fixtures.Fixture):
         if self.inputs.fixture_cleanup == 'force':
             do_cleanup = True
         if do_cleanup:
-            if self.inputs.webui_config_flag:
+            if self.inputs.is_gui_based_configuration():
                 self.webui.vm_delete_in_openstack(self)
             else:
                 self.vrfs = dict()
@@ -1508,8 +1538,12 @@ class VMFixture(fixtures.Fixture):
                         warn_only=True, abort_on_prompts=False):
                     key_file = self.nova_fixture.tmp_key_file
                     self.get_rsa_to_vm()
-                    i = 'timeout %d scp -o StrictHostKeyChecking=no -i id_rsa %s %s@%s:' % (
+                    if ':' in vm_ip :
+                       i = 'timeout %d scp -o StrictHostKeyChecking=no -i id_rsa %s %s@[%s]:' % (
                         timeout, file, dest_vm_username, vm_ip)
+                    else:
+                       i = 'timeout %d scp -o StrictHostKeyChecking=no -i id_rsa %s %s@%s:' % (
+                           timeout, file, dest_vm_username, vm_ip)
                     cmd_outputs = self.run_cmd_on_vm(cmds=[i])
                     self.logger.debug(cmd_outputs)
         except Exception, e:
@@ -1542,7 +1576,7 @@ class VMFixture(fixtures.Fixture):
         self.run_cmd_on_vm(cmds, as_sudo=True)
 
     @retry(delay=10, tries=5)
-    def check_file_transfer(self, dest_vm_fixture, mode='scp', size='100', fip=None):
+    def check_file_transfer(self, dest_vm_fixture, mode='scp', size='100', fip=None, expectation= True):
         '''
         Creates a file of "size" bytes and transfers to the VM in dest_vm_fixture using mode scp/tftp
         '''
@@ -1551,7 +1585,9 @@ class VMFixture(fixtures.Fixture):
            dest_vm_ip = fip
         else:
            dest_vm_ip = dest_vm_fixture.vm_ip
-
+        for vm_ipv6 in dest_vm_fixture.vm_ips :
+            if ':' in vm_ipv6 :
+                dest_vm_ip= vm_ipv6
         # Create file
         cmd = 'dd bs=%s count=1 if=/dev/zero of=%s' % (size, filename)
         self.run_cmd_on_vm(cmds=[cmd])
@@ -1582,11 +1618,17 @@ class VMFixture(fixtures.Fixture):
         if size in out_dict.values()[0]:
             self.logger.info('File of size %s is trasferred successfully to \
                     %s by %s ' % (size, dest_vm_ip, mode))
+            if not expectation:
+                return False
+            else:
+                return True
         else:
             self.logger.warn('File of size %s is not trasferred fine to %s \
-                    by %s !! Pls check logs' % (size, dest_vm_ip, mode))
-            return False
-        return True
+                    by %s' % (size, dest_vm_ip, mode))
+            if not expectation:
+                return True
+            else:
+                return False
     # end check_file_transfer
 
     def get_rsa_to_vm(self):
@@ -1668,8 +1710,35 @@ class VMFixture(fixtures.Fixture):
         return vm_ip
     # end def
 
-    @retry(delay=3, tries=20)
     def wait_till_vm_is_up(self):
+        status = self.wait_till_vm_up()
+        if type(status) == tuple:
+            return status[0]
+        elif type(status) == bool:
+            return status
+
+    def wait_till_vm_is_active(self):
+        status = self.nova_fixture.wait_till_vm_is_active(self.vm_obj)
+        if type(status) == tuple:
+            if status[1] in 'ERROR':
+                return False
+            elif status[1] in 'ACTIVE':
+                return True
+        elif type(status) == bool:
+            return status
+
+    @retry(delay=3, tries=20)
+    def wait_till_vm_up(self):
+        vm_status = self.nova_fixture.wait_till_vm_is_active(self.vm_obj)
+        if vm_status[1] in 'ERROR':
+            self.logger.warn("VM in error state. Asserting...")
+            return (False, 'final')
+#            assert False
+
+        if vm_status[1] != 'ACTIVE':
+            result = result and False
+            return result
+
         result = self.verify_vm_launched()
         #console_check = self.nova_fixture.wait_till_vm_is_up(self.vm_obj)
         #result = result and self.nova_fixture.wait_till_vm_is_up(self.vm_obj)

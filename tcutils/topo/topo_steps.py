@@ -26,8 +26,10 @@ from common.policy import policy_test_helper
 from svc_template_fixture import SvcTemplateFixture
 from svc_instance_fixture import SvcInstanceFixture
 from security_group import SecurityGroupFixture
-from webui_test import *
-
+try:
+    from webui_test import *
+except ImportError:
+    pass
 
 def createUser(self):
     self.logger.info("Setup step: Creating User")
@@ -320,7 +322,7 @@ def attachPolicytoVN(self, option='openstack'):
                 connections=self.project_connections,
                 vn_name=vn,
                 vn_obj=self.vn_fixture,
-                topo=self.topo,
+                vn_policys=self.topo.vn_policy[vn],
                 project_name=self.topo.project,
                 options=option,
                 policy_obj=self.conf_policy_objs))
@@ -348,7 +350,7 @@ def attachPolicytoVN(self, option='contrail'):
                 options=option,
                 policy_obj=self.conf_policy_objs,
                 vn_obj=self.vn_fixture,
-                topo=self.topo,
+                vn_policys=self.topo.vn_policy[vn],
                 project_name=self.topo.project))
     return self
 # end attachPolicytoVN
@@ -672,7 +674,7 @@ def allocateNassociateFIP(self, config_topo):
         self.addCleanup(self.fip_fixture.deassoc_project,
                         self.fip_fixture, project)
         for vmfixt in config_topo[project]['vm']:
-            if self.inputs.webui_config_flag:
+            if self.inputs.is_gui_based_configuration():
                 self.fip_fixture.create_and_assoc_fip_webui(
                     self.fvn_fixture.vn_id,
                     config_topo[project]['vm'][vmfixt].vm_id)
